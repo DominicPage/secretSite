@@ -4,7 +4,11 @@ const express = require("express");
 const bodyParser = require("body-parser");
 const ejs = require("ejs");
 const mongoose = require("mongoose");
-const encrypt = require("mongoose-encryption");
+//const encrypt = require("mongoose-encryption");
+//const md5 = require("md5");
+const bcrypt = require("bcrypt");
+const saltRounds = 10;
+
 const Schema = mongoose.Schema;
 
 const app = express();
@@ -17,12 +21,10 @@ app.use(
   })
 );
 
-mongoose.connect(
-  process.env.MONGO_DB_CONNECTION, {
-    useNewUrlParser: true,
-    useUnifiedTopology: true,
-  }
-);
+mongoose.connect(process.env.MONGO_DB_CONNECTION, {
+  useNewUrlParser: true,
+  useUnifiedTopology: true,
+});
 
 const userSchema = new Schema({
   email: String,
@@ -30,10 +32,8 @@ const userSchema = new Schema({
 });
 // SCHEMAS SHOULD BE CREATED ABOVE THE SHEEP
 // const conatining secret was cut from here and moved to the .env file
-userSchema.plugin(encrypt, {
-  secret: process.env.SECRET,
-  encryptedFields: ["password"]
-});
+// LINE BELOW USED WITH MONGO ENCRYPTION
+// userSchema.plugin(encrypt, {  secret: process.env.SECRET,  encryptedFields: ["password"]});
 // MODELS SHOULD BE ADDED BELOW THE SHEEP
 const UserModel = new mongoose.model("User", userSchema);
 
@@ -50,36 +50,46 @@ app.get("/register", (req, res) => {
 });
 
 app.post("/register", (req, res) => {
-  const newUser = new UserModel({
-    email: req.body.username,
-    password: req.body.password,
-  });
-  newUser.save((err) => {
-    if (err) {
-      console.log(err);
-    } else {
-      res.render("secrets");
-    }
+  bcrypt.hash(req.body.password, saltRounds, (err, hash) => {
+    // Store hash in your password DB.
+    const newUser = new UserModel({
+      email: req.body.username,
+      password: hash,
+    });
+    newUser.save((err) => {
+      if (err) {
+        console.log(err);
+      } else {
+        res.render("secrets");
+      }
+    });
   });
 });
 
 app.post("/login", (req, res) => {
+  // Store hash in your password DB.
   const username = req.body.username;
   const password = req.body.password;
 
-  UserModel.findOne({
-    email: username
-  }, (err, foundUser) => {
-    if (err) {
-      console.log(err);
-    } else {
-      if (foundUser) {
-        if (foundUser.password === password) {
-          res.render("secrets");
+  UserModel.findOne(
+    {
+      email: username,
+    },
+    (err, foundUser) => {
+      if (err) {
+        console.log(err);
+      } else {
+        if (foundUser) {
+          //if (foundUser.password === password) {
+          bcrypt.compare(password, foundUser.password, (err, result) => {
+            if (result === true) {
+              res.render("secrets");
+            }
+          });
         }
       }
     }
-  });
+  );
 });
 
 app.listen(3000, () => {
